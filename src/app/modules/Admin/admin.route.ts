@@ -63,7 +63,74 @@ router.patch("/coupon/update/:id", adminControllers.updateCoupon);
 router.delete("/coupon/:id", adminControllers.deleteCoupon);
 
 /* =====================================================================
- * Export
+ * Blog Routes
  * ===================================================================== */
+
+const blogUpload = upload.single("image");
+
+router.get("/blogs", adminControllers.getAllBlogsAdmin);
+
+router.post(
+  "/blog/create",
+  blogUpload,
+  parseFormDataJson,
+  adminControllers.createBlog,
+);
+
+router.patch(
+  "/blog/:id",
+  blogUpload,
+  parseFormDataJson,
+  adminControllers.updateBlog,
+);
+
+router.delete("/blog/:id", adminControllers.deleteBlog);
+
+/* =====================================================================
+ * Faq Routes
+ * ===================================================================== */
+
+router.get("/faqs", adminControllers.getAllFaqsAdmin);
+router.post("/faq/create", adminControllers.createFaq);
+router.patch("/faq/:id", adminControllers.updateFaq);
+router.delete("/faq/:id", adminControllers.deleteFaq);
+
+/* =====================================================================
+ * Certification Routes
+ * ===================================================================== */
+
+const certificationUpload = upload.single("image");
+
+router.get("/certificates", adminControllers.getAllCertificationsAdmin);
+
+router.post(
+  "/certificate/create",
+  certificationUpload,
+  parseFormDataJson,
+  adminControllers.createCertification,
+);
+
+router.patch(
+  "/certificate/:id",
+  certificationUpload,
+  parseFormDataJson,
+  adminControllers.updateCertification,
+);
+
+router.delete("/certificate/:id", adminControllers.deleteCertification);
+
+/* =====================================================================
+ * Disclaimer Routes
+ * ===================================================================== */
+
+router.post("/disclaimer/create", adminControllers.createDisclaimer);
+router.patch("/disclaimer/update", adminControllers.updateDisclaimer);
+
+/* =====================================================================
+ * Explore Purity Routes
+ * ===================================================================== */
+
+router.post("/explore-purity/create", adminControllers.createExplorePurity);
+router.patch("/explore-purity/update", adminControllers.updateExplorePurity);
 
 export const adminRoutes = router;

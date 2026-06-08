@@ -11,6 +11,11 @@ import { productRoutes } from "../modules/Product/product.routes";
 import { wishlistRoutes } from "../modules/Wishlist/wishlist.route";
 import { cartRoutes } from "../modules/Cart/cart.routes";
 import { couponRoutes } from "../modules/Coupon/coupon.routes";
+import { blogRoutes } from "../modules/Settings/Blog/blog.routes";
+import { faqRoutes } from "../modules/Settings/Faq/faq.routes";
+import { certificationRoutes } from "../modules/Settings/Certification/certificate.routes";
+import { disclaimerRoutes } from "../modules/Settings/Disclaimer/disclaimer.routes";
+import { explorePurityRoutes } from "../modules/Settings/Explore Purity/explorePurity.routes";
 
 const router = Router();
 
@@ -63,6 +68,11 @@ const moduleRoutes = [
     path: "/coupon",
     route: couponRoutes,
   },
+  { path: "/blog", route: blogRoutes },
+  { path: "/faq", route: faqRoutes },
+  { path: "/certificate", route: certificationRoutes },
+  { path: "/disclaimer", route: disclaimerRoutes },
+  { path: "/explore-purity", route: explorePurityRoutes },
 ];
 
 moduleRoutes.forEach((route) => router.use(route.path, route?.route));

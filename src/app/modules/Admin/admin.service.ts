@@ -1,3 +1,4 @@
+import sanitizeHtml from "sanitize-html";
 import HttpStatus from "http-status";
 import { Types } from "mongoose";
 import AppError from "../../erros/AppError";
@@ -9,6 +10,17 @@ import { ProductModel } from "../Product/product.model";
 import QueryBuilder from "../../../builder/QueryBuilder";
 import { CouponModel } from "../Coupon/coupon.model";
 import { ICoupon } from "../Coupon/coupon.interface";
+import { ICertification } from "../Settings/Certification/certificate.interface";
+import { CertificationModel } from "../Settings/Certification/certificate.model";
+import { FaqModel } from "../Settings/Faq/faq.model";
+import { BlogModel } from "../Settings/Blog/blog.model";
+import { IFaq } from "../Settings/Faq/faq.interface";
+import { IBlog } from "../Settings/Blog/blog.interface";
+import { JwtPayload } from "../../interface/global";
+import { UserModel } from "../User/user.model";
+import { DisclaimerModel } from "../Settings/Disclaimer/disclaimer.model";
+import { sanitizeOptions } from "../../utils/SanitizeOptions";
+import { ExplorePurityModel } from "../Settings/Explore Purity/explorePurity.model";
 
 const createCategory = async (payload: ICategory) => {
   // Check duplicate name
@@ -630,6 +642,473 @@ const getSingleCouponAdmin = async (id: string) => {
   return coupon;
 };
 
+// ─── Blog ───────────────────────────────────────
+
+const createBlog = async (
+  file: Express.Multer.File | undefined,
+  payload: IBlog,
+) => {
+  if (!payload.title?.trim()) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Title is required");
+  }
+
+  if (!payload.content?.trim()) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Content is required");
+  }
+
+  // Image is optional
+  if (file) {
+    const uploadResult = await sendFileToCloudinary(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+    );
+    payload.image = uploadResult.secure_url;
+  }
+
+  const result = await BlogModel.create(payload);
+
+  if (!result) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Blog creation failed");
+  }
+
+  return result;
+};
+
+const updateBlog = async (
+  id: string,
+  file: Express.Multer.File | undefined,
+  payload: Partial<IBlog> & { clearFields?: string[] },
+) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid blog id");
+  }
+
+  const blog = await BlogModel.isBlogExistById(id);
+  if (!blog) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Blog not found");
+  }
+
+  // Upload new image if provided
+  if (file) {
+    const uploadResult = await sendFileToCloudinary(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+    );
+    payload.image = uploadResult.secure_url;
+  }
+
+  const { clearFields, ...restPayload } = payload;
+
+  // Strip protected fields
+  delete restPayload._id;
+  delete restPayload.createdAt;
+  delete restPayload.updatedAt;
+  delete restPayload.isDeleted;
+
+  const updateOps: Record<string, unknown> = {};
+
+  if (Object.keys(restPayload).length > 0) {
+    updateOps.$set = restPayload;
+  }
+
+  // Allow clearing the image (set back to null)
+  if (clearFields && clearFields.length > 0) {
+    const allowedClearable = ["image"];
+    const unsetObj: Record<string, 1> = {};
+    for (const field of clearFields) {
+      if (allowedClearable.includes(field)) {
+        unsetObj[field] = 1;
+      }
+    }
+    if (Object.keys(unsetObj).length > 0) {
+      updateOps.$unset = unsetObj;
+    }
+  }
+
+  if (Object.keys(updateOps).length === 0) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "No update fields provided");
+  }
+
+  const updated = await BlogModel.findByIdAndUpdate(
+    new Types.ObjectId(id),
+    updateOps,
+    { new: true, runValidators: true },
+  );
+
+  if (!updated) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Blog update failed");
+  }
+
+  return updated;
+};
+
+const deleteBlog = async (id: string) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid blog id");
+  }
+
+  const blog = await BlogModel.isBlogExistById(id);
+  if (!blog) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Blog not found");
+  }
+
+  const result = await BlogModel.findByIdAndUpdate(
+    new Types.ObjectId(id),
+    { $set: { isDeleted: true, isActive: false } },
+    { new: true },
+  );
+
+  if (!result) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Blog deletion failed");
+  }
+
+  return result;
+};
+
+const getAllBlogsAdmin = async (query: Record<string, unknown>) => {
+  const blogQuery = new QueryBuilder(
+    BlogModel.find({ isDeleted: false }),
+    query,
+  )
+    .search(["title", "content"])
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const meta = await blogQuery.countTotal();
+  const result = await blogQuery.modelQuery;
+
+  return { meta, result };
+};
+
+// ─── Faq ───────────────────────────────────────
+
+const createFaq = async (payload: IFaq) => {
+  if (!payload.question?.trim()) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Question is required");
+  }
+  if (!payload.answer?.trim()) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Answer is required");
+  }
+
+  const result = await FaqModel.create(payload);
+
+  if (!result) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Faq creation failed");
+  }
+
+  return result;
+};
+
+const updateFaq = async (id: string, payload: Partial<IFaq>) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid faq id");
+  }
+
+  const faq = await FaqModel.isFaqExistById(id);
+  if (!faq) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Faq not found");
+  }
+
+  delete payload._id;
+  delete payload.createdAt;
+  delete payload.updatedAt;
+  delete payload.isDeleted;
+
+  if (Object.keys(payload).length === 0) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "No update fields provided");
+  }
+
+  const updated = await FaqModel.findByIdAndUpdate(
+    new Types.ObjectId(id),
+    { $set: payload },
+    { new: true, runValidators: true },
+  );
+
+  if (!updated) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Faq update failed");
+  }
+
+  return updated;
+};
+
+const deleteFaq = async (id: string) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid faq id");
+  }
+
+  const faq = await FaqModel.isFaqExistById(id);
+  if (!faq) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Faq not found");
+  }
+
+  const result = await FaqModel.findByIdAndUpdate(
+    new Types.ObjectId(id),
+    { $set: { isDeleted: true, isActive: false } },
+    { new: true },
+  );
+
+  return result;
+};
+
+const getAllFaqsAdmin = async (query: Record<string, unknown>) => {
+  const faqQuery = new QueryBuilder(FaqModel.find({ isDeleted: false }), query)
+    .search(["question", "answer"])
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const meta = await faqQuery.countTotal();
+  const result = await faqQuery.modelQuery;
+
+  return { meta, result };
+};
+
+// ─── Certification ───────────────────────────────────────
+
+const createCertification = async (
+  file: Express.Multer.File | undefined,
+  payload: ICertification,
+) => {
+  if (!file) {
+    throw new AppError(
+      HttpStatus.BAD_REQUEST,
+      "Certification image or PDF is required",
+    );
+  }
+
+  if (!payload.title?.trim()) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Title is required");
+  }
+
+  if (!payload.size?.trim()) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Size is required");
+  }
+
+  // Cloudinary helper handles both images and PDFs automatically
+  const uploadResult = await sendFileToCloudinary(
+    file.buffer,
+    file.originalname,
+    file.mimetype,
+  );
+  payload.image = uploadResult.secure_url;
+
+  const result = await CertificationModel.create(payload);
+
+  if (!result) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Certification creation failed");
+  }
+
+  return result;
+};
+
+const updateCertification = async (
+  id: string,
+  file: Express.Multer.File | undefined,
+  payload: Partial<ICertification>,
+) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid certification id");
+  }
+
+  const cert = await CertificationModel.isCertificationExistById(id);
+  if (!cert) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Certification not found");
+  }
+
+  if (file) {
+    const uploadResult = await sendFileToCloudinary(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+    );
+    payload.image = uploadResult.secure_url;
+  }
+
+  delete payload._id;
+  delete payload.createdAt;
+  delete payload.updatedAt;
+  delete payload.isDeleted;
+
+  if (Object.keys(payload).length === 0) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "No update fields provided");
+  }
+
+  const updated = await CertificationModel.findByIdAndUpdate(
+    new Types.ObjectId(id),
+    { $set: payload },
+    { new: true, runValidators: true },
+  );
+
+  if (!updated) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Certification update failed");
+  }
+
+  return updated;
+};
+
+const deleteCertification = async (id: string) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid certification id");
+  }
+
+  const cert = await CertificationModel.isCertificationExistById(id);
+  if (!cert) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Certification not found");
+  }
+
+  const result = await CertificationModel.findByIdAndUpdate(
+    new Types.ObjectId(id),
+    { $set: { isDeleted: true, isActive: false } },
+    { new: true },
+  );
+
+  return result;
+};
+
+const getAllCertificationsAdmin = async (query: Record<string, unknown>) => {
+  const certQuery = new QueryBuilder(
+    CertificationModel.find({ isDeleted: false }),
+    query,
+  )
+    .search(["title", "size"])
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const meta = await certQuery.countTotal();
+  const result = await certQuery.modelQuery;
+
+  return { meta, result };
+};
+
+// ─── Disclaimer ───────────────────────────────────────
+
+const createDisclaimer = async (
+  payload: { description: string },
+  user: JwtPayload,
+) => {
+  const userId = user.user;
+
+  const isUserExist = await UserModel.findById(userId);
+  if (!isUserExist) {
+    throw new AppError(HttpStatus.NOT_FOUND, "User not found");
+  }
+
+  const { description } = payload;
+  if (!description) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Description is required");
+  }
+
+  const sanitizedContent = sanitizeHtml(description, sanitizeOptions);
+
+  const newDisclaimer = await DisclaimerModel.create({
+    description: sanitizedContent,
+  });
+
+  return newDisclaimer;
+};
+
+const updateDisclaimer = async (
+  payload: { description: string },
+  user: JwtPayload,
+) => {
+  const userId = user.user;
+
+  const isUserExist = await UserModel.findById(userId);
+  if (!isUserExist) {
+    throw new AppError(HttpStatus.NOT_FOUND, "User not found");
+  }
+
+  const { description } = payload;
+  if (!description) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Description is required");
+  }
+
+  const sanitizedDescription = sanitizeHtml(description, sanitizeOptions);
+
+  const updatedDisclaimer = await DisclaimerModel.findOneAndUpdate(
+    {},
+    { description: sanitizedDescription },
+    { new: true, upsert: true },
+  );
+
+  if (!updatedDisclaimer) {
+    throw new AppError(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      "Failed to update disclaimer",
+    );
+  }
+
+  return updatedDisclaimer;
+};
+
+// ─── Explore Purity ───────────────────────────────────────
+
+const createExplorePurity = async (
+  payload: { description: string },
+  user: JwtPayload,
+) => {
+  const userId = user.user;
+
+  const isUserExist = await UserModel.findById(userId);
+  if (!isUserExist) {
+    throw new AppError(HttpStatus.NOT_FOUND, "User not found");
+  }
+
+  const { description } = payload;
+  if (!description) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Description is required");
+  }
+
+  const sanitizedContent = sanitizeHtml(description, sanitizeOptions);
+
+  const newExplorePurity = await ExplorePurityModel.create({
+    description: sanitizedContent,
+  });
+
+  return newExplorePurity;
+};
+
+const updateExplorePurity = async (
+  payload: { description: string },
+  user: JwtPayload,
+) => {
+  const userId = user.user;
+
+  const isUserExist = await UserModel.findById(userId);
+  if (!isUserExist) {
+    throw new AppError(HttpStatus.NOT_FOUND, "User not found");
+  }
+
+  const { description } = payload;
+  if (!description) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Description is required");
+  }
+
+  const sanitizedDescription = sanitizeHtml(description, sanitizeOptions);
+
+  const updatedExplorePurity = await ExplorePurityModel.findOneAndUpdate(
+    {},
+    { description: sanitizedDescription },
+    { new: true, upsert: true },
+  );
+
+  if (!updatedExplorePurity) {
+    throw new AppError(
+      HttpStatus.INTERNAL_SERVER_ERROR,
+      "Failed to update explore purity",
+    );
+  }
+
+  return updatedExplorePurity;
+};
+
 export const adminServices = {
   // Category
   createCategory,
@@ -646,4 +1125,25 @@ export const adminServices = {
   deleteCoupon,
   getAllCouponsAdmin,
   getSingleCouponAdmin,
+  // Blog
+  createBlog,
+  updateBlog,
+  deleteBlog,
+  getAllBlogsAdmin,
+  // Faq
+  createFaq,
+  updateFaq,
+  deleteFaq,
+  getAllFaqsAdmin,
+  // Certification
+  createCertification,
+  updateCertification,
+  deleteCertification,
+  getAllCertificationsAdmin,
+  // Disclaimer
+  createDisclaimer,
+  updateDisclaimer,
+  // Explore Purity
+  createExplorePurity,
+  updateExplorePurity,
 };

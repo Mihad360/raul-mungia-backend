@@ -2,6 +2,7 @@ import HttpStatus from "http-status";
 import catchAsync from "../../utils/catchAsync";
 import sendResponse from "../../utils/sendResponse";
 import { adminServices } from "./admin.service";
+import { JwtPayload } from "../../interface/global";
 
 const createCategory = catchAsync(async (req, res) => {
   const result = await adminServices.createCategory(req.body);
@@ -159,6 +160,213 @@ const getSingleCouponAdmin = catchAsync(async (req, res) => {
   });
 });
 
+// ─── Blog ───────────────────────────────────────
+
+const createBlog = catchAsync(async (req, res) => {
+  const file = req.file as Express.Multer.File | undefined;
+  const result = await adminServices.createBlog(file, req.body);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.CREATED,
+    success: true,
+    message: "Blog created successfully",
+    data: result,
+  });
+});
+
+const updateBlog = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const file = req.file as Express.Multer.File | undefined;
+  const result = await adminServices.updateBlog(id as string, file, req.body);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Blog updated successfully",
+    data: result,
+  });
+});
+
+const deleteBlog = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await adminServices.deleteBlog(id as string);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Blog deleted successfully",
+    data: result,
+  });
+});
+
+const getAllBlogsAdmin = catchAsync(async (req, res) => {
+  const result = await adminServices.getAllBlogsAdmin(req.query);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Blogs retrieved successfully",
+    meta: result.meta,
+    data: result.result,
+  });
+});
+
+// ─── Faq ───────────────────────────────────────
+
+const createFaq = catchAsync(async (req, res) => {
+  const result = await adminServices.createFaq(req.body);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.CREATED,
+    success: true,
+    message: "Faq created successfully",
+    data: result,
+  });
+});
+
+const updateFaq = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await adminServices.updateFaq(id as string, req.body);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Faq updated successfully",
+    data: result,
+  });
+});
+
+const deleteFaq = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await adminServices.deleteFaq(id as string);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Faq deleted successfully",
+    data: result,
+  });
+});
+
+const getAllFaqsAdmin = catchAsync(async (req, res) => {
+  const result = await adminServices.getAllFaqsAdmin(req.query);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Faqs retrieved successfully",
+    meta: result.meta,
+    data: result.result,
+  });
+});
+
+// ─── Certification ───────────────────────────────────────
+
+const createCertification = catchAsync(async (req, res) => {
+  const file = req.file as Express.Multer.File | undefined;
+  const result = await adminServices.createCertification(file, req.body);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.CREATED,
+    success: true,
+    message: "Certification created successfully",
+    data: result,
+  });
+});
+
+const updateCertification = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const file = req.file as Express.Multer.File | undefined;
+  const result = await adminServices.updateCertification(
+    id as string,
+    file,
+    req.body,
+  );
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Certification updated successfully",
+    data: result,
+  });
+});
+
+const deleteCertification = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await adminServices.deleteCertification(id as string);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Certification deleted successfully",
+    data: result,
+  });
+});
+
+const getAllCertificationsAdmin = catchAsync(async (req, res) => {
+  const result = await adminServices.getAllCertificationsAdmin(req.query);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Certifications retrieved successfully",
+    meta: result.meta,
+    data: result.result,
+  });
+});
+
+// ─── Disclaimer ───────────────────────────────────────
+
+const createDisclaimer = catchAsync(async (req, res) => {
+  const user = req.user as JwtPayload;
+  const result = await adminServices.createDisclaimer(req.body, user);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.CREATED,
+    success: true,
+    message: "Disclaimer created successfully",
+    data: result,
+  });
+});
+
+const updateDisclaimer = catchAsync(async (req, res) => {
+  const user = req.user as JwtPayload;
+  const result = await adminServices.updateDisclaimer(req.body, user);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Disclaimer updated successfully",
+    data: result,
+  });
+});
+
+// ─── Explore Purity ───────────────────────────────────────
+
+const createExplorePurity = catchAsync(async (req, res) => {
+  const user = req.user as JwtPayload;
+  const result = await adminServices.createExplorePurity(req.body, user);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.CREATED,
+    success: true,
+    message: "Explore Purity created successfully",
+    data: result,
+  });
+});
+
+const updateExplorePurity = catchAsync(async (req, res) => {
+  const user = req.user as JwtPayload;
+  const result = await adminServices.updateExplorePurity(req.body, user);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Explore Purity updated successfully",
+    data: result,
+  });
+});
+
 export const adminControllers = {
   // Category
   createCategory,
@@ -175,4 +383,25 @@ export const adminControllers = {
   deleteCoupon,
   getAllCouponsAdmin,
   getSingleCouponAdmin,
+  // Blog
+  createBlog,
+  updateBlog,
+  deleteBlog,
+  getAllBlogsAdmin,
+  // Faq
+  createFaq,
+  updateFaq,
+  deleteFaq,
+  getAllFaqsAdmin,
+  // Certification
+  createCertification,
+  updateCertification,
+  deleteCertification,
+  getAllCertificationsAdmin,
+  // Disclaimer
+  createDisclaimer,
+  updateDisclaimer,
+  // Explore Purity
+  createExplorePurity,
+  updateExplorePurity,
 };
