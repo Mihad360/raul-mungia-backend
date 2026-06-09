@@ -4,6 +4,8 @@ import AppError from "../../erros/AppError";
 import { JwtPayload } from "../../interface/global";
 import { CartModel } from "./cart.model";
 import { ProductModel } from "../Product/product.model";
+import { couponServices } from "../Coupon/coupon.service";
+import { DiscountServices } from "../Discount/discount.service";
 
 /**
  * Helper: case-insensitive size comparison
@@ -390,10 +392,18 @@ const getCartCount = async (user: JwtPayload) => {
 
 /**
  * Get cart with totals — useful for checkout preview
- * Calculates subtotal using current product variant prices
+ * Now supports optional coupon code + shipping cost for full breakdown
+ *
+ * Pricing flow:
+ *   subtotal → minus coupon discount → minus bulk discount → plus shipping = total
  */
-const getCartSummary = async (user: JwtPayload) => {
+const getCartSummary = async (
+  user: JwtPayload,
+  options?: { couponCode?: string; shippingCost?: number },
+) => {
   const userId = new Types.ObjectId(user.user);
+  const couponCode = options?.couponCode?.trim();
+  const shippingCost = Number(options?.shippingCost) || 0;
 
   const cart = await CartModel.findOne({ user: userId }).populate({
     path: "items.product",
@@ -407,17 +417,25 @@ const getCartSummary = async (user: JwtPayload) => {
       totalItems: 0,
       totalQuantity: 0,
       subtotal: 0,
+      appliedCoupon: null,
+      couponDiscountAmount: 0,
+      subtotalAfterCoupon: 0,
+      appliedDiscount: null,
+      bulkDiscountAmount: 0,
+      subtotalAfterAllDiscounts: 0,
+      shippingCost: 0,
+      total: 0,
       hasUnavailableItems: false,
     };
   }
 
+  // ===== Step 1: Calculate base subtotal from cart items =====
   let subtotal = 0;
   let totalQuantity = 0;
   let hasUnavailableItems = false;
   const itemSummaries = [];
 
   for (const item of cart.items) {
-    // If product was filtered out by populate, it's unavailable
     if (!item.product || typeof item.product === "string") {
       hasUnavailableItems = true;
       itemSummaries.push({
@@ -484,11 +502,71 @@ const getCartSummary = async (user: JwtPayload) => {
     });
   }
 
+  subtotal = Number(subtotal.toFixed(2));
+
+  // ===== Step 2: Apply Coupon (if provided) =====
+  let appliedCoupon = null;
+  let couponDiscountAmount = 0;
+
+  if (couponCode && subtotal > 0) {
+    const couponValidation = await couponServices.validateCouponForCart(
+      couponCode,
+      user,
+    );
+
+    if (couponValidation.valid && couponValidation.coupon) {
+      appliedCoupon = {
+        couponId: couponValidation.coupon._id,
+        code: couponValidation.coupon.code,
+        discountPercent: couponValidation.coupon.discountPercent,
+      };
+      couponDiscountAmount = Number(
+        ((subtotal * couponValidation.coupon.discountPercent) / 100).toFixed(2),
+      );
+    }
+  }
+
+  const subtotalAfterCoupon = Number(
+    (subtotal - couponDiscountAmount).toFixed(2),
+  );
+
+  // ===== Step 3: Apply Bulk Discount (auto, based on total quantity) =====
+  const discountCalculation = await DiscountServices.calculateDiscountForItems(
+    totalQuantity,
+    subtotalAfterCoupon,
+  );
+
+  const appliedDiscount = discountCalculation.tierUsed
+    ? {
+        discountId: discountCalculation.discountId,
+        tierUsed: discountCalculation.tierUsed,
+        itemsCount: discountCalculation.itemsCount,
+        discountPercent: discountCalculation.discountPercent,
+      }
+    : null;
+
+  const bulkDiscountAmount = discountCalculation.discountAmount;
+
+  const subtotalAfterAllDiscounts = Number(
+    (subtotalAfterCoupon - bulkDiscountAmount).toFixed(2),
+  );
+
+  // ===== Step 4: Add shipping cost (if provided) =====
+  const total = Number((subtotalAfterAllDiscounts + shippingCost).toFixed(2));
+
   return {
     items: itemSummaries,
     totalItems: cart.items.length,
     totalQuantity,
-    subtotal: Number(subtotal.toFixed(2)),
+    subtotal,
+    appliedCoupon,
+    couponDiscountAmount,
+    subtotalAfterCoupon,
+    appliedDiscount,
+    bulkDiscountAmount,
+    subtotalAfterAllDiscounts,
+    shippingCost: Number(shippingCost.toFixed(2)),
+    total,
     hasUnavailableItems,
   };
 };

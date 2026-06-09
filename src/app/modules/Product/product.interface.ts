@@ -6,6 +6,7 @@ export interface IProductVariant {
   price: number;
   originalPrice?: number | null;
   stock: number;
+  weight: number; // NEW — in pounds (lbs), for FedEx shipping calculation
 }
 
 export interface IProduct {

@@ -21,6 +21,10 @@ import { UserModel } from "../User/user.model";
 import { DisclaimerModel } from "../Settings/Disclaimer/disclaimer.model";
 import { sanitizeOptions } from "../../utils/SanitizeOptions";
 import { ExplorePurityModel } from "../Settings/Explore Purity/explorePurity.model";
+import { Discount } from "../Discount/discount.model";
+import { IDiscount, IDiscountTier } from "../Discount/discount.interface";
+import { PaymentMethodModel } from "../PaymentMethod/paymentMethod.model";
+import { IPaymentMethod } from "../PaymentMethod/paymentMethod.interface";
 
 const createCategory = async (payload: ICategory) => {
   // Check duplicate name
@@ -1109,6 +1113,259 @@ const updateExplorePurity = async (
   return updatedExplorePurity;
 };
 
+// ===== Discount Admin Methods =====
+
+const createDiscountInDB = async (payload: IDiscount) => {
+  // If new discount is marked active, deactivate all others
+  if (payload.isActive) {
+    await Discount.updateMany(
+      { isDeleted: false },
+      { $set: { isActive: false } },
+    );
+  }
+
+  const result = await Discount.create(payload);
+  return result;
+};
+
+const getAllDiscountsFromDB = async (query: Record<string, unknown>) => {
+  const discountQuery = new QueryBuilder(
+    Discount.find({ isDeleted: false }),
+    query,
+  )
+    .search(["name", "description"])
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const meta = await discountQuery.countTotal();
+  const result = await discountQuery.modelQuery;
+
+  return { meta, result };
+};
+
+const getSingleDiscountFromDB = async (id: string) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid discount ID");
+  }
+
+  const result = await Discount.findOne({ _id: id, isDeleted: false });
+
+  if (!result) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Discount not found");
+  }
+
+  return result;
+};
+
+const updateDiscountInDB = async (
+  id: string,
+  payload: Partial<IDiscount> & {
+    addTiers?: IDiscountTier[];
+    removeTierIndexes?: number[];
+    updateTier?: { index: number; tier: IDiscountTier };
+  },
+) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid discount ID");
+  }
+
+  const existing = await Discount.findOne({ _id: id, isDeleted: false });
+  if (!existing) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Discount not found");
+  }
+
+  const { addTiers, removeTierIndexes, updateTier, ...basicFields } = payload;
+
+  // If activating this discount, deactivate all others
+  if (basicFields.isActive === true) {
+    await Discount.updateMany(
+      { _id: { $ne: id }, isDeleted: false },
+      { $set: { isActive: false } },
+    );
+  }
+
+  // Step 1: Update basic fields
+  if (Object.keys(basicFields).length > 0) {
+    await Discount.findByIdAndUpdate(id, basicFields, {
+      new: true,
+      runValidators: true,
+    });
+  }
+
+  // Step 2: Add new tiers
+  if (addTiers && addTiers.length > 0) {
+    await Discount.findByIdAndUpdate(
+      id,
+      { $push: { tiers: { $each: addTiers } } },
+      { new: true, runValidators: true },
+    );
+  }
+
+  // Step 3: Update existing tier by index
+  if (updateTier) {
+    const updateQuery: Record<string, unknown> = {};
+    updateQuery[`tiers.${updateTier.index}`] = updateTier.tier;
+
+    await Discount.findByIdAndUpdate(
+      id,
+      { $set: updateQuery },
+      { new: true, runValidators: true },
+    );
+  }
+
+  // Step 4: Remove tiers by indexes
+  if (removeTierIndexes && removeTierIndexes.length > 0) {
+    const current = await Discount.findById(id);
+    if (current) {
+      const filteredTiers = current.tiers.filter(
+        (_, index) => !removeTierIndexes.includes(index),
+      );
+
+      if (filteredTiers.length === 0) {
+        throw new AppError(
+          HttpStatus.BAD_REQUEST,
+          "Cannot remove all tiers. At least one tier is required.",
+        );
+      }
+
+      await Discount.findByIdAndUpdate(
+        id,
+        { $set: { tiers: filteredTiers } },
+        { new: true, runValidators: true },
+      );
+    }
+  }
+
+  // Return fully updated discount
+  const updated = await Discount.findById(id);
+  return updated;
+};
+
+const deleteDiscountFromDB = async (id: string) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid discount ID");
+  }
+
+  const result = await Discount.findOneAndUpdate(
+    { _id: id, isDeleted: false },
+    { isDeleted: true, isActive: false },
+    { new: true },
+  );
+
+  if (!result) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Discount not found");
+  }
+
+  return result;
+};
+
+// ===== Payment Method Admin Methods =====
+
+const createPaymentMethodInDB = async (payload: IPaymentMethod) => {
+  // Check if active (non-deleted) record exists for this type
+  const existing = await PaymentMethodModel.findOne({
+    type: payload.type,
+    isDeleted: false,
+  });
+
+  if (existing) {
+    throw new AppError(
+      HttpStatus.CONFLICT,
+      `Payment method "${payload.type}" already exists. Please update the existing one instead.`,
+    );
+  }
+
+  const result = await PaymentMethodModel.create(payload);
+  return result;
+};
+
+const getAllPaymentMethodsFromDB = async (query: Record<string, unknown>) => {
+  const paymentMethodQuery = new QueryBuilder(
+    PaymentMethodModel.find({ isDeleted: false }),
+    query,
+  )
+    .search(["displayName", "type", "description"])
+    .filter()
+    .sort()
+    .paginate()
+    .fields();
+
+  const meta = await paymentMethodQuery.countTotal();
+  const result = await paymentMethodQuery.modelQuery;
+
+  return { meta, result };
+};
+
+const getSinglePaymentMethodFromDB = async (id: string) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid payment method ID");
+  }
+
+  const result = await PaymentMethodModel.findOne({
+    _id: id,
+    isDeleted: false,
+  });
+
+  if (!result) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Payment method not found");
+  }
+
+  return result;
+};
+
+const updatePaymentMethodInDB = async (
+  id: string,
+  payload: Partial<IPaymentMethod>,
+) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid payment method ID");
+  }
+
+  const existing = await PaymentMethodModel.findOne({
+    _id: id,
+    isDeleted: false,
+  });
+
+  if (!existing) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Payment method not found");
+  }
+
+  // Prevent changing the type field
+  if (payload.type && payload.type !== existing.type) {
+    throw new AppError(
+      HttpStatus.BAD_REQUEST,
+      "Payment method type cannot be changed. Delete and create a new one instead.",
+    );
+  }
+
+  const result = await PaymentMethodModel.findByIdAndUpdate(id, payload, {
+    new: true,
+    runValidators: true,
+  });
+
+  return result;
+};
+
+const deletePaymentMethodFromDB = async (id: string) => {
+  if (!Types.ObjectId.isValid(id)) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Invalid payment method ID");
+  }
+
+  const result = await PaymentMethodModel.findOneAndUpdate(
+    { _id: id, isDeleted: false },
+    { isDeleted: true, isActive: false },
+    { new: true },
+  );
+
+  if (!result) {
+    throw new AppError(HttpStatus.NOT_FOUND, "Payment method not found");
+  }
+
+  return result;
+};
+
 export const adminServices = {
   // Category
   createCategory,
@@ -1146,4 +1403,16 @@ export const adminServices = {
   // Explore Purity
   createExplorePurity,
   updateExplorePurity,
+  // Discount
+  createDiscountInDB,
+  getAllDiscountsFromDB,
+  getSingleDiscountFromDB,
+  updateDiscountInDB,
+  deleteDiscountFromDB,
+  // Payment Method
+  createPaymentMethodInDB,
+  getAllPaymentMethodsFromDB,
+  getSinglePaymentMethodFromDB,
+  updatePaymentMethodInDB,
+  deletePaymentMethodFromDB,
 };

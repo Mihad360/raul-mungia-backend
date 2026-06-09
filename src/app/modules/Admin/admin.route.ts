@@ -133,4 +133,18 @@ router.patch("/disclaimer/update", adminControllers.updateDisclaimer);
 router.post("/explore-purity/create", adminControllers.createExplorePurity);
 router.patch("/explore-purity/update", adminControllers.updateExplorePurity);
 
+/* ===================== Discount ===================== */
+router.get("/discounts", adminControllers.getAllDiscounts);
+router.get("/discount/:id", adminControllers.getSingleDiscount);
+router.post("/discount/create", adminControllers.createDiscount);
+router.patch("/discount/:id", adminControllers.updateDiscount);
+router.delete("/discount/:id", adminControllers.deleteDiscount);
+
+/* ===================== Payment Method ===================== */
+router.get("/payment-method", adminControllers.getAllPaymentMethods);
+router.get("/payment-method/:id", adminControllers.getSinglePaymentMethod);
+router.post("/payment-method", adminControllers.createPaymentMethod);
+router.patch("/payment-method/:id", adminControllers.updatePaymentMethod);
+router.delete("/payment-method/:id", adminControllers.deletePaymentMethod);
+
 export const adminRoutes = router;

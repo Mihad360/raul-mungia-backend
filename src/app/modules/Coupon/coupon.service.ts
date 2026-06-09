@@ -1,8 +1,8 @@
 import HttpStatus from "http-status";
-import { Types } from "mongoose";
 import AppError from "../../erros/AppError";
 import { JwtPayload } from "../../interface/global";
 import { CouponModel } from "./coupon.model";
+import { ICoupon } from "./coupon.interface";
 // import { OrderModel } from "../Order/order.model";
 
 /**
@@ -53,19 +53,19 @@ const validateCoupon = async (
   // 4. Per-user usage check — by couponId (NOT by code)
   //    This prevents the year-to-year code reuse bug.
   //    Order.appliedCoupon.couponId is a unique reference to THIS specific coupon doc.
-  const userId = new Types.ObjectId(user.user);
-//   const userAlreadyUsed = await OrderModel.exists({
-//     user: userId,
-//     "appliedCoupon.couponId": coupon._id,
-//     status: { $ne: "cancelled" },
-//   });
+  //   const userId = new Types.ObjectId(user.user);
+  //   const userAlreadyUsed = await OrderModel.exists({
+  //     user: userId,
+  //     "appliedCoupon.couponId": coupon._id,
+  //     status: { $ne: "cancelled" },
+  //   });
 
-//   if (userAlreadyUsed) {
-//     throw new AppError(
-//       HttpStatus.BAD_REQUEST,
-//       "You have already used this coupon",
-//     );
-//   }
+  //   if (userAlreadyUsed) {
+  //     throw new AppError(
+  //       HttpStatus.BAD_REQUEST,
+  //       "You have already used this coupon",
+  //     );
+  //   }
 
   // 5. Calculate discount
   const discountAmount = Number(
@@ -105,7 +105,48 @@ const getAvailableCoupons = async () => {
   return coupons;
 };
 
+/**
+ * Silent validation for cart summary — returns validity without throwing.
+ * Used when applying coupon in cart preview (so cart still loads if coupon invalid).
+ */
+const validateCouponForCart = async (
+  code: string,
+  user: JwtPayload,
+): Promise<{ valid: boolean; coupon: ICoupon | null; reason?: string }> => {
+  if (!code || !code.trim()) {
+    return { valid: false, coupon: null, reason: "No coupon code provided" };
+  }
+
+  const coupon = await CouponModel.findOne({
+    code: code.trim().toUpperCase(),
+    isDeleted: false,
+    isActive: true,
+  });
+
+  if (!coupon) {
+    return { valid: false, coupon: null, reason: "Coupon not found" };
+  }
+
+  // Check expiry
+  if (coupon.expiryDate && new Date(coupon.expiryDate) < new Date()) {
+    return { valid: false, coupon: null, reason: "Coupon expired" };
+  }
+
+  // Check if user already used this coupon (uncomment when Order model exists)
+  // const orderCount = await OrderModel.countDocuments({
+  //   user: new Types.ObjectId(user.user),
+  //   "appliedCoupon.couponId": coupon._id,
+  // });
+  //
+  // if (orderCount > 0) {
+  //   return { valid: false, coupon: null, reason: "Coupon already used" };
+  // }
+
+  return { valid: true, coupon };
+};
+
 export const couponServices = {
   validateCoupon,
   getAvailableCoupons,
+  validateCouponForCart,
 };

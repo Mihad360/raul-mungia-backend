@@ -18,7 +18,12 @@ const getMyCart = catchAsync(async (req, res) => {
 
 const getCartSummary = catchAsync(async (req, res) => {
   const user = req.user as JwtPayload;
-  const result = await cartServices.getCartSummary(user);
+  const { couponCode, shippingCost } = req.query;
+
+  const result = await cartServices.getCartSummary(user, {
+    couponCode: couponCode as string,
+    shippingCost: shippingCost ? Number(shippingCost) : 0,
+  });
 
   sendResponse(res, {
     statusCode: HttpStatus.OK,

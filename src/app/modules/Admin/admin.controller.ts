@@ -367,6 +367,135 @@ const updateExplorePurity = catchAsync(async (req, res) => {
   });
 });
 
+// ===== Discount Admin Controllers =====
+
+const createDiscount = catchAsync(async (req, res) => {
+  const result = await adminServices.createDiscountInDB(req.body);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.CREATED,
+    success: true,
+    message: "Discount created successfully",
+    data: result,
+  });
+});
+
+const getAllDiscounts = catchAsync(async (req, res) => {
+  const result = await adminServices.getAllDiscountsFromDB(req.query);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Discounts retrieved successfully",
+    meta: result.meta,
+    data: result.result,
+  });
+});
+
+const getSingleDiscount = catchAsync(async (req, res) => {
+  const result = await adminServices.getSingleDiscountFromDB(
+    req.params.id as string,
+  );
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Discount retrieved successfully",
+    data: result,
+  });
+});
+
+const updateDiscount = catchAsync(async (req, res) => {
+  const result = await adminServices.updateDiscountInDB(
+    req.params.id as string,
+    req.body,
+  );
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Discount updated successfully",
+    data: result,
+  });
+});
+
+const deleteDiscount = catchAsync(async (req, res) => {
+  const result = await adminServices.deleteDiscountFromDB(
+    req.params.id as string,
+  );
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Discount deleted successfully",
+    data: result,
+  });
+});
+
+// ===== Payment Method Admin Controllers =====
+
+const createPaymentMethod = catchAsync(async (req, res) => {
+  const result = await adminServices.createPaymentMethodInDB(req.body);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.CREATED,
+    success: true,
+    message: "Payment method created successfully",
+    data: result,
+  });
+});
+
+const getAllPaymentMethods = catchAsync(async (req, res) => {
+  const result = await adminServices.getAllPaymentMethodsFromDB(req.query);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Payment methods retrieved successfully",
+    meta: result.meta,
+    data: result.result,
+  });
+});
+
+const getSinglePaymentMethod = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await adminServices.getSinglePaymentMethodFromDB(id as string);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Payment method retrieved successfully",
+    data: result,
+  });
+});
+
+const updatePaymentMethod = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await adminServices.updatePaymentMethodInDB(
+    id as string,
+    req.body,
+  );
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Payment method updated successfully",
+    data: result,
+  });
+});
+
+const deletePaymentMethod = catchAsync(async (req, res) => {
+  const { id } = req.params;
+  const result = await adminServices.deletePaymentMethodFromDB(id as string);
+
+  sendResponse(res, {
+    statusCode: HttpStatus.OK,
+    success: true,
+    message: "Payment method deleted successfully",
+    data: result,
+  });
+});
+
 export const adminControllers = {
   // Category
   createCategory,
@@ -404,4 +533,16 @@ export const adminControllers = {
   // Explore Purity
   createExplorePurity,
   updateExplorePurity,
+  // Discount
+  createDiscount,
+  getAllDiscounts,
+  getSingleDiscount,
+  updateDiscount,
+  deleteDiscount,
+  // Payment Method
+  createPaymentMethod,
+  getAllPaymentMethods,
+  getSinglePaymentMethod,
+  updatePaymentMethod,
+  deletePaymentMethod,
 };

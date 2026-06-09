@@ -25,6 +25,13 @@ const productSchema = new Schema<IProduct, ProductInterface>(
         price: { type: Number, required: true, min: 0 },
         originalPrice: { type: Number, min: 0, default: null },
         stock: { type: Number, required: true, min: 0, default: 0 },
+        // NEW: Weight in pounds for FedEx shipping calculation
+        weight: {
+          type: Number,
+          required: true,
+          default: 0.5, // Default 0.5 lbs (typical peptide vial weight)
+          min: 0,
+        },
       },
     ],
     description: {
