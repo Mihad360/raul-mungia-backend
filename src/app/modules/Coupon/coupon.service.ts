@@ -3,6 +3,8 @@ import AppError from "../../erros/AppError";
 import { JwtPayload } from "../../interface/global";
 import { CouponModel } from "./coupon.model";
 import { ICoupon } from "./coupon.interface";
+import { OrderModel } from "../Order/order.model";
+import { Types } from "mongoose";
 // import { OrderModel } from "../Order/order.model";
 
 /**
@@ -133,14 +135,17 @@ const validateCouponForCart = async (
   }
 
   // Check if user already used this coupon (uncomment when Order model exists)
-  // const orderCount = await OrderModel.countDocuments({
-  //   user: new Types.ObjectId(user.user),
-  //   "appliedCoupon.couponId": coupon._id,
-  // });
-  //
-  // if (orderCount > 0) {
-  //   return { valid: false, coupon: null, reason: "Coupon already used" };
-  // }
+  // Check if user already used this coupon
+  const orderCount = await OrderModel.countDocuments({
+    user: new Types.ObjectId(user.user),
+    "appliedCoupon.couponId": coupon._id,
+    status: { $nin: ["cancelled"] }, // Cancelled orders don't count as used
+    isDeleted: false,
+  });
+
+  if (orderCount > 0) {
+    return { valid: false, coupon: null, reason: "Coupon already used" };
+  }
 
   return { valid: true, coupon };
 };

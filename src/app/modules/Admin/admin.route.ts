@@ -2,6 +2,7 @@ import express, { NextFunction, Request, Response } from "express";
 import auth from "../../middlewares/auth";
 import { upload } from "../../utils/sendImageToCloudinary";
 import { adminControllers } from "./admin.controller";
+import { adminControllersV2 } from "./admin.controller.v2";
 
 const router = express.Router();
 
@@ -141,10 +142,35 @@ router.patch("/discount/:id", adminControllers.updateDiscount);
 router.delete("/discount/:id", adminControllers.deleteDiscount);
 
 /* ===================== Payment Method ===================== */
-router.get("/payment-method", adminControllers.getAllPaymentMethods);
+router.get("/payment-methods", adminControllers.getAllPaymentMethods);
 router.get("/payment-method/:id", adminControllers.getSinglePaymentMethod);
-router.post("/payment-method", adminControllers.createPaymentMethod);
+router.post("/payment-method/create", adminControllers.createPaymentMethod);
 router.patch("/payment-method/:id", adminControllers.updatePaymentMethod);
 router.delete("/payment-method/:id", adminControllers.deletePaymentMethod);
+
+/* ===================== Order ===================== */
+router.get("/orders", adminControllersV2.getAllOrders);
+router.get("/order/:id", adminControllersV2.getSingleOrderForAdmin);
+router.patch(
+  "/order/:id/confirm-payment",
+  adminControllersV2.confirmManualPayment,
+);
+router.patch("/order/:id/cancel", adminControllersV2.cancelOrderByAdmin);
+router.patch("/order/:id/refund", adminControllersV2.processRefund);
+router.patch("/order/:id/ship", adminControllersV2.markOrderAsShipped);
+router.patch(
+  "/order/:id/generate-label",
+  adminControllersV2.generateShippingLabel,
+); // ← NEW (FedEx auto)
+router.patch(
+  "/order/:id/refresh-tracking",
+  adminControllersV2.refreshTrackingInfo,
+);
+router.patch("/order/:id/deliver", adminControllersV2.markOrderAsDelivered);
+router.patch("/order/:id/admin-note", adminControllersV2.updateOrderAdminNote);
+
+/* ===================== Transaction ===================== */
+router.get("/transactions", adminControllersV2.getAllTransactions);
+router.get("/transaction/:id", adminControllersV2.getSingleTransactionForAdmin);
 
 export const adminRoutes = router;

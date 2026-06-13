@@ -18,6 +18,9 @@ import { disclaimerRoutes } from "../modules/Settings/Disclaimer/disclaimer.rout
 import { explorePurityRoutes } from "../modules/Settings/Explore Purity/explorePurity.routes";
 import { DiscountRoutes } from "../modules/Discount/discount.routes";
 import { paymentMethodRoutes } from "../modules/PaymentMethod/paymentMethod.routes";
+import { orderRoutes } from "../modules/Order/order.routes";
+import { transactionRoutes } from "../modules/Transaction/transaction.routes";
+import { shippingRoutes } from "../modules/Shipping/shipping.routes";
 
 const router = Router();
 
@@ -76,7 +79,10 @@ const moduleRoutes = [
   { path: "/disclaimer", route: disclaimerRoutes },
   { path: "/explore-purity", route: explorePurityRoutes },
   { path: "/discount", route: DiscountRoutes },
-  { path: "/payment-methods", route: paymentMethodRoutes },
+  { path: "/payment-method", route: paymentMethodRoutes },
+  { path: "/order", route: orderRoutes },
+  { path: "/transaction", route: transactionRoutes },
+  { path: "/shipping", route: shippingRoutes },
 ];
 
 moduleRoutes.forEach((route) => router.use(route.path, route?.route));
