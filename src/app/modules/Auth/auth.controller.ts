@@ -20,13 +20,6 @@ const loginUser = catchAsync(async (req, res) => {
   const result = await authServices.loginUser(req.body);
   const { accessToken, role, _id, user } = result;
 
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "none",
-    maxAge: 365 * 60 * 60 * 7,
-  });
-
   sendResponse(res, {
     statusCode: HttpStatus.OK,
     success: true,

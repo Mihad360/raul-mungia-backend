@@ -2,6 +2,7 @@ import { Schema, model } from "mongoose";
 import bcrypt from "bcrypt";
 import { IUser, UserInterface } from "./user.interface";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 const profileImageSchema = new Schema(
   {
     path: {
@@ -32,8 +33,12 @@ const userSchema = new Schema<IUser, UserInterface>(
       type: String,
       default: null,
     },
+    address: {
+      type: String,
+      default: null,
+    },
     profileImage: {
-      type: profileImageSchema || String,
+      type:  String,
       default: null,
     },
     role: {

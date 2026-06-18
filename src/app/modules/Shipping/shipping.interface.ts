@@ -25,7 +25,10 @@ export interface IValidateAddressPayload {
 export interface IShippingOption {
   serviceType: string;
   serviceName: string;
-  totalCost: number;
+  totalCost: number;          // Existing — actual FedEx rate
+  customerPays: number;       // NEW — what customer actually pays
+  freeShippingApplied: boolean; // NEW
+  savings: number;            // NEW — totalCost - customerPays
   currency: string;
   transitDays?: string;
   deliveryDay?: string;

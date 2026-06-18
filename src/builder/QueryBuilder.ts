@@ -26,15 +26,28 @@ class QueryBuilder<T> {
 
   filter() {
     const queryObj = { ...this.query };
-    const excludeFields = ["searchTerm", "sort", "limit", "page", "fields"];
+
+    const excludeFields = [
+      "searchTerm",
+      "sort",
+      "limit",
+      "page",
+      "fields",
+      "minPrice",
+      "maxPrice",
+    ];
+
     excludeFields.forEach((el) => delete queryObj[el]);
 
-    const mongoQuery: Record<string, unknown> = {};
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const mongoQuery: Record<string, any> = {};
+
+    const priceCondition: Record<string, number> = {};
 
     for (const key in queryObj) {
       const value = queryObj[key];
 
-      // ✅ handle range like age=20-30
+      // handle range like age=20-30
       if (typeof value === "string" && value.includes("-")) {
         const [min, max] = value.split("-").map(Number);
 
@@ -44,11 +57,34 @@ class QueryBuilder<T> {
         }
       }
 
-      // default behavior
       mongoQuery[key] = value;
     }
 
-    this.modelQuery = this.modelQuery.find(mongoQuery as QueryFilter<T>);
+    // ─── Variant price filter ─────────────────────────────
+    const minPrice = this.query.minPrice
+      ? Number(this.query.minPrice)
+      : undefined;
+
+    const maxPrice = this.query.maxPrice
+      ? Number(this.query.maxPrice)
+      : undefined;
+
+    if (minPrice !== undefined) priceCondition.$gte = minPrice;
+    if (maxPrice !== undefined) priceCondition.$lte = maxPrice;
+
+    if (Object.keys(priceCondition).length > 0) {
+      mongoQuery.variants = {
+        $elemMatch: {
+          price: priceCondition,
+        },
+      };
+    }
+
+    this.modelQuery = this.modelQuery.find({
+      ...this.modelQuery.getFilter(),
+      ...mongoQuery,
+    });
+
     return this;
   }
 

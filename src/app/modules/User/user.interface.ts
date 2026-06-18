@@ -1,5 +1,6 @@
 import { Model, Types } from "mongoose";
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 interface ProfileImage {
   path: string; // e.g., "images/1234567890-profile.jpg"
   url: string; // e.g., "http://localhost:5000/images/1234567890-profile.jpg"
@@ -11,7 +12,8 @@ export interface IUser {
   password: string;
   name?: string;
   phone?: string;
-  profileImage?: ProfileImage | string;
+  address?: string;
+  profileImage?: string;
   role: "user" | "admin" | "super_admin";
   fcmToken?: string[];
   isActive?: boolean;

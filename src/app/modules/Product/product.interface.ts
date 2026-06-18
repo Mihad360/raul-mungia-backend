@@ -14,6 +14,7 @@ export interface IProduct {
   title: string;
   productCode: string;
   category: Types.ObjectId;
+  categoryName: string;
   variants: IProductVariant[];
   description: string;
   additionalInformation?: string;

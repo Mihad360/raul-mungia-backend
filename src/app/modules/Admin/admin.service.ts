@@ -163,6 +163,7 @@ const createProduct = async (
 
   // Normalize category to ObjectId
   payload.category = new Types.ObjectId(payload.category);
+  payload.categoryName = categoryExists.name;
 
   const result = await ProductModel.create(payload);
 

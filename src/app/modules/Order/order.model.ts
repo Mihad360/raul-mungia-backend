@@ -132,8 +132,11 @@ const orderSchema = new Schema<IOrder>(
     couponDiscountAmount: { type: Number, default: 0, min: 0 },
     appliedDiscount: { type: appliedDiscountSchema, default: null },
     bulkDiscountAmount: { type: Number, default: 0, min: 0 },
-    shippingCost: { type: Number, default: 0, min: 0 },
-    total: { type: Number, required: true, min: 0 },
+    shippingCost: { type: Number, default: 0, min: 0 }, // existing
+    actualShippingCost: { type: Number, default: 0, min: 0 }, // NEW — real FedEx cost
+    freeShippingApplied: { type: Boolean, default: false }, // NEW
+    freeShippingSavings: { type: Number, default: 0, min: 0 }, // NEW — what Raul covered
+    total: { type: Number, required: true, min: 0 }, // existing
 
     shippingAddress: { type: shippingAddressSchema, required: true },
 

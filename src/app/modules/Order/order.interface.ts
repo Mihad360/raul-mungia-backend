@@ -84,6 +84,10 @@ export interface IOrder {
   shippingCost: number;
   total: number;
 
+  // New fields for free shipping accounting
+  actualShippingCost: number;
+freeShippingApplied: boolean;
+freeShippingSavings: number;
   // Customer info
   shippingAddress: IShippingAddress;
 

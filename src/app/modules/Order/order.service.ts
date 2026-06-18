@@ -17,6 +17,7 @@ import {
   notifyAdmins,
   notifyCustomer,
 } from "../Notification/notification.utils";
+import { shippingServices } from "../Shipping/shipping.service";
 
 interface IPlaceOrderPayload {
   shippingAddress: IShippingAddress;
@@ -70,6 +71,11 @@ const placeOrderInDB = async (
     }
   }
 
+  // Validate shipping method was selected
+  if (!payload.shippingMethod || !payload.shippingMethod.trim()) {
+    throw new AppError(HttpStatus.BAD_REQUEST, "Shipping method is required");
+  }
+
   // Fetch payment method
   const paymentMethod = await PaymentMethodModel.findOne({
     _id: payload.paymentMethodId,
@@ -84,10 +90,39 @@ const placeOrderInDB = async (
     );
   }
 
-  // Get full cart summary
+  // ===== Re-fetch shipping rates from FedEx (anti-tampering) =====
+  // Never trust frontend prices — always re-calculate server-side
+  const fedexAddress = {
+    streetLines: [
+      payload.shippingAddress.street,
+      payload.shippingAddress.apartment || "",
+    ].filter((line) => line.trim().length > 0),
+    city: payload.shippingAddress.city,
+    stateOrProvinceCode: payload.shippingAddress.state,
+    postalCode: payload.shippingAddress.postalCode,
+    countryCode: payload.shippingAddress.country,
+  };
+
+  const shippingOptions = await shippingServices.getShippingRatesFromFedEx(
+    user,
+    { recipientAddress: fedexAddress },
+  );
+
+  const chosenRate = shippingOptions.find(
+    (opt) => opt.serviceType === payload.shippingMethod,
+  );
+
+  if (!chosenRate) {
+    throw new AppError(
+      HttpStatus.BAD_REQUEST,
+      `Shipping method "${payload.shippingMethod}" is not available for this address`,
+    );
+  }
+
+  // Get cart summary using server-verified shipping price
   const cartSummary = await cartServices.getCartSummary(user, {
     couponCode: payload.couponCode,
-    shippingCost: payload.shippingCost || 0,
+    shippingCost: chosenRate.customerPays,
   });
 
   if (cartSummary.items.length === 0) {
@@ -147,7 +182,7 @@ const placeOrderInDB = async (
       lineTotal: cartItem.lineTotal,
     });
   }
-  console.log(orderItems);
+
   // Determine initial statuses based on payment method
   const initialOrderStatus: TOrderStatus = paymentMethod.isAutomated
     ? "pending"
@@ -187,7 +222,13 @@ const placeOrderInDB = async (
         }
       : null,
     bulkDiscountAmount: cartSummary.bulkDiscountAmount,
-    shippingCost: cartSummary.shippingCost,
+
+    // Shipping fields — both customer-facing and internal
+    shippingCost: chosenRate.customerPays,           // What customer paid
+    actualShippingCost: chosenRate.totalCost,        // Real FedEx cost (internal)
+    freeShippingApplied: chosenRate.freeShippingApplied,
+    freeShippingSavings: chosenRate.savings,
+
     total: cartSummary.total,
 
     shippingAddress: payload.shippingAddress,
@@ -202,7 +243,7 @@ const placeOrderInDB = async (
     paymentStatus: initialPaymentStatus,
     latestTransactionId: null,
 
-    shippingMethod: payload.shippingMethod || "",
+    shippingMethod: chosenRate.serviceType,
 
     status: initialOrderStatus,
     customerNote: payload.customerNote || "",
@@ -236,20 +277,19 @@ const placeOrderInDB = async (
 
   // Send notifications (outside transaction — non-critical)
   try {
-    // Notify all admins about new order
     await notifyAdmins({
       type: "new_order",
       title: "New Order Received",
-      message: `Order ${createdOrder.orderNumber} placed. Payment method: ${createdOrder.paymentMethod.displayName}. Total: $${createdOrder.total.toFixed(2)}`,
+      message: `Order ${createdOrder.orderNumber} placed. Payment method: ${createdOrder.paymentMethod.displayName}. Total: $${createdOrder.total.toFixed(2)}${chosenRate.freeShippingApplied ? " (Free Shipping)" : ""}`,
       data: {
         orderId: createdOrder._id,
         orderNumber: createdOrder.orderNumber,
         total: createdOrder.total,
         isAutomatedPayment: paymentMethod.isAutomated,
+        freeShippingApplied: chosenRate.freeShippingApplied,
       },
     });
 
-    // Notify the customer about their order
     await notifyCustomer({
       recipientId: userId,
       type: "order_placed",

@@ -19,6 +19,9 @@ const productSchema = new Schema<IProduct, ProductInterface>(
       ref: "Category",
       required: true,
     },
+    categoryName: {
+      type: String,
+    },
     variants: [
       {
         size: { type: String, required: true, trim: true },
@@ -76,6 +79,7 @@ const productSchema = new Schema<IProduct, ProductInterface>(
 // Indexes for faster queries
 productSchema.index({ category: 1, isDeleted: 1 });
 productSchema.index({ productCode: 1 });
+productSchema.index({ categoryName: 1 });
 productSchema.index({ title: "text", description: "text" });
 
 // Statics

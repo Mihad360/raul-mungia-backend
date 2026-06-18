@@ -224,10 +224,27 @@ const getShipperInfo = () => ({
 const getRates = async (params: IGetRatesParams): Promise<IFedExRate[]> => {
   const token = await getAccessToken();
   const shipper = getShipperInfo();
-  console.log(token);
-  console.log(shipper);
+
   // FedEx minimum billing weight is 1 lb
   const weight = Math.max(params.packageWeight, 1);
+
+  // Calculate next business day for ship date
+  // Avoids sandbox issues with "today" on weekends/holidays
+  const getNextBusinessDay = (): string => {
+    const date = new Date();
+    date.setDate(date.getDate() + 1); // Start with tomorrow
+
+    // Skip Saturday (6) and Sunday (0)
+    while (date.getDay() === 0 || date.getDay() === 6) {
+      date.setDate(date.getDate() + 1);
+    }
+
+    // Format as YYYY-MM-DD
+    const yyyy = date.getFullYear();
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd}`;
+  };
 
   const payload = {
     accountNumber: {
@@ -246,8 +263,14 @@ const getRates = async (params: IGetRatesParams): Promise<IFedExRate[]> => {
           countryCode: params.recipientAddress.countryCode,
         },
       },
+      shipDateStamp: getNextBusinessDay(), // ← KEY FIX: future business day
       pickupType: "DROPOFF_AT_FEDEX_LOCATION",
+      packagingType: "YOUR_PACKAGING",
       rateRequestType: ["ACCOUNT", "LIST"],
+      preferredCurrency: "USD",
+      shippingChargesPayment: {
+        paymentType: "SENDER",
+      },
       requestedPackageLineItems: [
         {
           weight: {
@@ -257,64 +280,160 @@ const getRates = async (params: IGetRatesParams): Promise<IFedExRate[]> => {
         },
       ],
     },
+    carrierCodes: ["FDXE", "FDXG"], // ← Explicit: Express + Ground
   };
 
-  try {
-    const response = await axios.post(
-      `${config.FEDEX_API_BASE}/rate/v1/rates/quotes`,
-      payload,
-      {
-        headers: buildHeaders(token),
-        timeout: 15000,
-      },
-    );
+  // ─── Retry logic for FedEx sandbox flakiness ────────────────
+  const MAX_RETRIES = 2;
+  let lastError: unknown;
 
-    const rateDetails = response.data?.output?.rateReplyDetails || [];
-    console.log(rateDetails);
-    // Transform FedEx response into clean format
-    const rates: IFedExRate[] = rateDetails.map(
-      (rate: Record<string, unknown>) => {
-        const ratedDetails =
-          (rate.ratedShipmentDetails as Array<Record<string, unknown>>) || [];
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    try {
+      const response = await axios.post(
+        `${config.FEDEX_API_BASE}/rate/v1/rates/quotes`,
+        payload,
+        {
+          headers: buildHeaders(token),
+          timeout: 15000,
+        },
+      );
 
-        // Prefer ACCOUNT rate (lower) over LIST rate
-        const accountRate = ratedDetails.find((r) => r.rateType === "ACCOUNT");
-        const chosenRate = accountRate || ratedDetails[0];
+      const rateDetails = response.data?.output?.rateReplyDetails || [];
 
-        const commit = rate.commit as Record<string, unknown> | undefined;
+      if (rateDetails.length === 0) {
+        throw new AppError(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          "No shipping rates available for this address.",
+        );
+      }
 
-        return {
-          serviceType: rate.serviceType as string,
-          serviceName: rate.serviceName as string,
-          totalCost: Number(chosenRate?.totalNetCharge) || 0,
-          currency: (chosenRate?.currency as string) || "USD",
-          transitDays: (commit?.transitTime as string) || undefined,
-          deliveryDay: (commit?.dayOfWeek as string) || undefined,
+      const rates: IFedExRate[] = rateDetails.map(
+        (rate: Record<string, unknown>) => {
+          const ratedDetails =
+            (rate.ratedShipmentDetails as Array<Record<string, unknown>>) || [];
+
+          const accountRate = ratedDetails.find(
+            (r) => r.rateType === "ACCOUNT",
+          );
+          const chosenRate = accountRate || ratedDetails[0];
+
+          const commit = rate.commit as Record<string, unknown> | undefined;
+
+          return {
+            serviceType: rate.serviceType as string,
+            serviceName: rate.serviceName as string,
+            totalCost: Number(chosenRate?.totalNetCharge) || 0,
+            currency: (chosenRate?.currency as string) || "USD",
+            transitDays: (commit?.transitTime as string) || undefined,
+            deliveryDay: (commit?.dayOfWeek as string) || undefined,
+          };
+        },
+      );
+
+      rates.sort((a, b) => a.totalCost - b.totalCost);
+      return rates;
+    } catch (error) {
+      lastError = error;
+
+      if (error instanceof AxiosError) {
+        const errorData = error.response?.data as {
+          errors?: Array<{ code: string; message: string }>;
         };
-      },
-    );
+        const firstError = errorData?.errors?.[0];
 
-    // Sort by price ascending
-    rates.sort((a, b) => a.totalCost - b.totalCost);
+        const isTransient =
+          firstError?.code === "INTERNAL.SERVER.ERROR" ||
+          firstError?.code === "SERVICE.UNAVAILABLE.ERROR" ||
+          error.code === "ECONNRESET" ||
+          error.code === "ETIMEDOUT" ||
+          (error.response?.status !== undefined &&
+            error.response.status >= 500 &&
+            error.response.status < 600);
 
-    return rates;
-  } catch (error) {
-    console.error("FedEx Rates API error:", error);
-    if (error instanceof AxiosError) {
-      console.error("FedEx response:", error.response?.data);
-      const errorMessage =
-        (error.response?.data as Record<string, unknown>)?.errors ||
-        "FedEx rate calculation failed";
+        if (isTransient && attempt < MAX_RETRIES) {
+          const delay = 1000 * Math.pow(2, attempt);
+          console.warn(
+            `FedEx ${firstError?.code || "transient error"} — retrying in ${delay}ms (attempt ${attempt + 1}/${MAX_RETRIES + 1})`,
+          );
+          await new Promise((resolve) => setTimeout(resolve, delay));
+          continue;
+        }
+
+        if (firstError) {
+          console.error("FedEx API error:", firstError);
+
+          if (firstError.code === "INTERNAL.SERVER.ERROR") {
+            throw new AppError(
+              HttpStatus.SERVICE_UNAVAILABLE,
+              "FedEx is temporarily unavailable. Please try again in a moment.",
+            );
+          }
+
+          if (
+            firstError.code.includes("POSTAL") ||
+            firstError.code.includes("ZIP")
+          ) {
+            throw new AppError(
+              HttpStatus.BAD_REQUEST,
+              "The postal code is invalid. Please check and try again.",
+            );
+          }
+
+          if (
+            firstError.code.includes("STATE") ||
+            firstError.code.includes("PROVINCE")
+          ) {
+            throw new AppError(
+              HttpStatus.BAD_REQUEST,
+              "The state/province is invalid for this address.",
+            );
+          }
+
+          if (firstError.code.includes("CITY")) {
+            throw new AppError(
+              HttpStatus.BAD_REQUEST,
+              "The city does not match the postal code. Please verify.",
+            );
+          }
+
+          if (firstError.code.includes("ADDRESS")) {
+            throw new AppError(
+              HttpStatus.BAD_REQUEST,
+              "The shipping address could not be validated.",
+            );
+          }
+
+          if (firstError.code.includes("ACCOUNT")) {
+            throw new AppError(
+              HttpStatus.SERVICE_UNAVAILABLE,
+              "Shipping account is not configured correctly. Please contact support.",
+            );
+          }
+
+          throw new AppError(
+            HttpStatus.SERVICE_UNAVAILABLE,
+            firstError.message || "Failed to calculate shipping rates.",
+          );
+        }
+
+        throw new AppError(
+          HttpStatus.SERVICE_UNAVAILABLE,
+          "Unable to calculate shipping rates. Please try again.",
+        );
+      }
+
       throw new AppError(
         HttpStatus.SERVICE_UNAVAILABLE,
-        `Unable to calculate shipping rates: ${JSON.stringify(errorMessage)}`,
+        "Unable to calculate shipping rates. Please try again.",
       );
     }
-    throw new AppError(
-      HttpStatus.SERVICE_UNAVAILABLE,
-      "Unable to calculate shipping rates. Please try again.",
-    );
   }
+
+  console.error("FedEx Rates API failed after retries:", lastError);
+  throw new AppError(
+    HttpStatus.SERVICE_UNAVAILABLE,
+    "FedEx is temporarily unavailable. Please try again in a moment.",
+  );
 };
 
 /* ============================================================

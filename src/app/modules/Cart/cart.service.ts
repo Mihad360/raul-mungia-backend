@@ -6,6 +6,7 @@ import { CartModel } from "./cart.model";
 import { ProductModel } from "../Product/product.model";
 import { couponServices } from "../Coupon/coupon.service";
 import { DiscountServices } from "../Discount/discount.service";
+import config from "../../config";
 
 /**
  * Helper: case-insensitive size comparison
@@ -411,6 +412,7 @@ const getCartSummary = async (
     populate: { path: "category", select: "name description" },
   });
 
+  // Empty cart shortcut
   if (!cart) {
     return {
       items: [],
@@ -426,6 +428,9 @@ const getCartSummary = async (
       shippingCost: 0,
       total: 0,
       hasUnavailableItems: false,
+      freeShippingEligible: false,
+      freeShippingThreshold: config.FREE_SHIPPING_THRESHOLD,
+      amountToFreeShipping: config.FREE_SHIPPING_THRESHOLD,
     };
   }
 
@@ -530,7 +535,7 @@ const getCartSummary = async (
     (subtotal - couponDiscountAmount).toFixed(2),
   );
 
-  // ===== Step 3: Apply Bulk Discount (auto, based on total quantity) =====
+  // ===== Step 3: Apply Bulk Discount (auto) =====
   const discountCalculation = await DiscountServices.calculateDiscountForItems(
     totalQuantity,
     subtotalAfterCoupon,
@@ -551,7 +556,16 @@ const getCartSummary = async (
     (subtotalAfterCoupon - bulkDiscountAmount).toFixed(2),
   );
 
-  // ===== Step 4: Add shipping cost (if provided) =====
+  // ===== Step 4: Free Shipping Eligibility =====
+  // Checked against ORIGINAL subtotal (industry standard, customer-friendly)
+  const freeShippingThreshold = config.FREE_SHIPPING_THRESHOLD;
+  const freeShippingEligible =
+    config.FREE_SHIPPING_ENABLED && subtotal >= freeShippingThreshold;
+  const amountToFreeShipping = freeShippingEligible
+    ? 0
+    : Number((freeShippingThreshold - subtotal).toFixed(2));
+
+  // ===== Step 5: Add shipping cost (if provided) =====
   const total = Number((subtotalAfterAllDiscounts + shippingCost).toFixed(2));
 
   return {
@@ -568,6 +582,9 @@ const getCartSummary = async (
     shippingCost: Number(shippingCost.toFixed(2)),
     total,
     hasUnavailableItems,
+    freeShippingEligible,
+    freeShippingThreshold,
+    amountToFreeShipping,
   };
 };
 

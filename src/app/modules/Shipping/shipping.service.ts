@@ -10,6 +10,8 @@ import {
   IShippingOption,
 } from "./shipping.interface";
 import { fedexClient } from "../../utils/fedex/fedex.client";
+import config from "../../config";
+import { cartServices } from "../Cart/cart.service";
 
 /**
  * Calculate total package weight from user's cart
@@ -107,7 +109,13 @@ const getShippingRatesFromFedEx = async (
     );
   }
 
-  // Call FedEx
+  // Get cart subtotal for free shipping eligibility check
+  const cartSummary = await cartServices.getCartSummary(user);
+  const qualifiesForFreeShipping =
+    config.FREE_SHIPPING_ENABLED &&
+    cartSummary.subtotal >= config.FREE_SHIPPING_THRESHOLD;
+
+  // Call FedEx for actual rates
   const rates = await fedexClient.getRates({
     recipientAddress,
     packageWeight,
@@ -120,11 +128,14 @@ const getShippingRatesFromFedEx = async (
     );
   }
 
-  // Find cheapest and fastest options
-  const cheapestCost = Math.min(...rates.map((r) => r.totalCost));
+  // Find the rate of the "free" service (used as shipping credit value)
+  const freeServiceRate = rates.find(
+    (r) => r.serviceType === config.FREE_SHIPPING_SERVICE,
+  );
+  const shippingCredit =
+    qualifiesForFreeShipping && freeServiceRate ? freeServiceRate.totalCost : 0;
 
-  // Service type rankings for "fastest" determination
-  // Lower number = faster
+  // Service type rankings for "fastest" determination (lower = faster)
   const serviceSpeedRank: Record<string, number> = {
     FIRST_OVERNIGHT: 1,
     PRIORITY_OVERNIGHT: 2,
@@ -141,17 +152,33 @@ const getShippingRatesFromFedEx = async (
       (serviceSpeedRank[b.serviceType] || 99),
   )[0];
 
-  // Build final options with flags
-  const options: IShippingOption[] = rates.map((rate) => ({
-    serviceType: rate.serviceType,
-    serviceName: rate.serviceName,
-    totalCost: rate.totalCost,
-    currency: rate.currency,
-    transitDays: rate.transitDays,
-    deliveryDay: rate.deliveryDay,
-    isCheapest: rate.totalCost === cheapestCost,
-    isFastest: rate.serviceType === fastestRate.serviceType,
-  }));
+  // Build options with free shipping logic
+  const options: IShippingOption[] = rates.map((rate) => {
+    const isFreeService = rate.serviceType === config.FREE_SHIPPING_SERVICE;
+    const customerPays = qualifiesForFreeShipping
+      ? Math.max(rate.totalCost - shippingCredit, 0)
+      : rate.totalCost;
+
+    return {
+      serviceType: rate.serviceType,
+      serviceName: rate.serviceName,
+      totalCost: Number(rate.totalCost.toFixed(2)),
+      customerPays: Number(customerPays.toFixed(2)),
+      freeShippingApplied: qualifiesForFreeShipping && isFreeService,
+      savings: Number((rate.totalCost - customerPays).toFixed(2)),
+      currency: rate.currency,
+      transitDays: rate.transitDays,
+      deliveryDay: rate.deliveryDay,
+      isCheapest: false,
+      isFastest: rate.serviceType === fastestRate.serviceType,
+    };
+  });
+
+  // Set isCheapest based on customerPays (not raw totalCost)
+  const cheapestCustomerCost = Math.min(...options.map((o) => o.customerPays));
+  options.forEach((o) => {
+    o.isCheapest = o.customerPays === cheapestCustomerCost;
+  });
 
   return options;
 };
